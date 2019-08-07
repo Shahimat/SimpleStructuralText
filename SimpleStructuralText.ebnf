@@ -1,0 +1,20 @@
+(* Lexical part *)
+(* char -> all symbols without "'" *)
+digit = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9';
+let16 = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+code_mark      = '\';
+record_begin   = '/';
+record_end     = ';';
+quotation_mark = "'";
+id     = char, {char};
+byte   = digit | let16, digit | let16;
+code   = code_mark, byte, {byte}, code_mark;
+string = quotation_mark, {char}, quotation_mark;
+
+(*comment's part*)
+comments = '/', '*', {char | quotation_mark}, '*', '/';
+
+(* Syntax part *)
+sst    = record;
+record = record_begin, id, {value}, record_end;
+value  = code | string | record;

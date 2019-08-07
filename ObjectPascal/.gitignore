@@ -1,0 +1,6 @@
+/lib
+*.lpi
+*.lps
+*.bak
+*.res
+*.exe
