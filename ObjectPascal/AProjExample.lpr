@@ -6,6 +6,6 @@ uses PascalSST;
 
 begin
   WriteLn('Press enter to continue...');
-  ReadLn;
+  //ReadLn;
 end.
 
