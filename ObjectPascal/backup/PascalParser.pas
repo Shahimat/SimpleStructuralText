@@ -3,15 +3,30 @@
 (*                         The MIT License (MIT)                             *)
 (*                                                                           *)
 (*       Copyright (c) 2019 Nakhapetyan Gevorg <ngs22071993@gmail.com>       *)
-(*       ObjectPascal internal syntactic structure for reading simple        *)
-(*                   structure text format files (SST)                       *)
+(*             ObjectPascal base structure of completed parser               *)
 (*                                                                           *)
 (*===========================================================================*)
-unit PascalSST;
+unit PascalParser;
 
 interface
 
-uses PascalParserSST;
+uses GStack;
+
+type
+
+ generic TParser<T>=class
+  private
+   type TResStack = specialize TStack<T>;
+   var FStack: TResStack;
+  public
+   //procedure Push(x:T);inline;
+   //procedure Pop();inline;
+   //function Top():T;inline;
+   //function Size():longint;inline;
+   //function IsEmpty():boolean;inline;
+   //constructor Create;
+   //destructor Destroy;override;
+  end;
 
 implementation
 

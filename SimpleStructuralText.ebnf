@@ -17,7 +17,6 @@ quotation_mark = "'";
 id     = record_begin, [id_symbols], (letter | let16), {letter | let16 | digit};
 byte   = digit | let16, digit | let16;
 code   = code_mark, byte, {byte};
-codes  = code, {code}, code_mark;
 string = quotation_mark, {char}, quotation_mark;
 
 (*comment's part*)
@@ -26,4 +25,4 @@ comments = '/', '*', {char | quotation_mark}, '*', '/';
 (* Syntax part *)
 sst    = record;
 record = id, {value}, record_end;
-value  = codes | string | record;
+value  = code | string | record;

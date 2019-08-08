@@ -155,7 +155,7 @@ end;
 
 procedure TLexerST.DETECT_STRING;
 begin
- if CurLexeme = STL_QUOTATION_MARK then Exelent := True;
+
 end;
 
 procedure TLexerST.DETECT_CODE;
