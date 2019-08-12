@@ -8,6 +8,7 @@ var
   Text: String;
   Pos1, Pos2: PInteger;
   ValType: stPType;
+  TermType: stPType;
   ValError: PBoolean;
 
 
@@ -15,7 +16,7 @@ Procedure Print(Value: stType);
 begin
  case Value of
   ST_NONE:   WriteLn('ST_NONE');
-  ST_RECORD: WriteLn('ST_RECORD');
+  //ST_RECORD: WriteLn('ST_RECORD');
   ST_ID:     WriteLn('ST_ID');
   ST_CODE:   WriteLn('ST_CODE');
   ST_STRING: WriteLn('ST_STRING');
@@ -31,6 +32,19 @@ begin
   Result += Text[i];
 end;
 
+function GetType: String;
+begin
+ case TermType^ of
+  ST_NONE:        Result := 'NONE';
+  ST_STRING:      Result := 'STRING';
+  ST_CODE:        Result := 'CODE';
+  ST_ID:          Result := 'ID';
+  ST_COMMENT:     Result := 'COMMENT';
+  ST_RECORD_END:  Result := 'RECORD_END';
+  ST_OUT:         Result := 'OUT';
+  else            Result := 'UNKNOWN';
+ end;
+end;
 
 begin
 
@@ -59,7 +73,7 @@ begin
 + #13#10 + '            '+#39+'o'+#39+' '+#39+'p'+#39+' '+#39+'q'+#39+' '+#39+'r'+#39+' '+#39+'s'+#39+' '+#39+'t'+#39+' '+#39+'u'+#39+''
 + #13#10 + '            '+#39+'v'+#39+' '+#39+'w'+#39+' '+#39+'x'+#39+' '+#39+'y'+#39+' '+#39+'z'+#39+''
 + #13#10 + '        ;'
-+ #13#10 + '        /tab \09\0D\0A\ '+#39+' '+#39+';'
++ #13#10 + '        /tab \09\0D\0A '+#39+' '+#39+';'
 + #13#10 + '        /char /all; /without; '+#39+'"'+#39+';'
 + #13#10 + '    ;'
 + #13#10 + '    /*some law'+#39+'s*/'
@@ -70,15 +84,19 @@ begin
 + #13#10 + '        /true '+#39+'true'+#39+';'
 + #13#10 + '        /false '+#39+'false'+#39+';'
 + #13#10 + '        /null '+#39+'null'+#39+';'
-+ #13#10 + '        /some_code \AA042F\;'
++ #13#10 + '        /some_code \AA042F;'
 + #13#10 + '    ;'
 + #13#10 + ';';
 
   writeln(Text);
 
-  stBind(@Text, Pos1, Pos2, ValType, ValError);
+  stBind(Text, Pos1, Pos2, ValType, ValError, TermType);
   stReset;
-
+  while stNextTerminal do
+  begin
+   Writeln(GetText + #9 + GetType);
+  end;
+  Writeln(GetType);
 
   WriteLn('Press enter to continue...');
   ReadLn;
