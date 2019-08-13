@@ -12,21 +12,22 @@ interface
 
 type
 
- (*
+  (*
     record - /some ... ;
     id     - /some
     code   - \6AF1
     string - 'some'
   *)
-  stType = (ST_NONE, ST_ID, ST_CODE, ST_STRING, ST_RECORD_END, ST_COMMENT,
-    ST_OUT);
-  stPType = ^stType;
+stType = (ST_NONE, ST_ID, ST_CODE, ST_STRING, ST_RECORD_END, ST_COMMENT, ST_OUT);
+stPType = ^stType;
 
-Procedure stBind(var ValStructText: String; var ValPos1, ValPos2: PInteger;
-  var ValType: stPType; var ValError: PBoolean; var SomeType: stPType);
+Procedure stBind(var ValPos1, ValPos2: PInteger; var ValType: stPType;
+  var ValFinished, ValError: PBoolean); Overload;
+Procedure stBind(ValStructText: PString); Overload;
 Procedure stReset;
-Function  stNextTerminal: Boolean;
-Function  stGetErrorInfo: String;
+Procedure stNextTerminalCheck;
+Procedure stNextTerminal;
+Function  stGetInfo: String;
 
 
 implementation
@@ -40,7 +41,6 @@ type
    STL_RECORD_BEGIN, STL_RECORD_END, STL_QUOTATION_MARK, STL_TAB
  );
 
- PSTterm = ^STterm;
  STterm = (
    (*Terminals*)
    STT_NONE, STT_STRING, STT_CODE, STT_ID, STT_RECORD_END, STT_OUT,
@@ -48,17 +48,42 @@ type
    STN_SST, STN_R, STN_RR, STN_V
  );
 
- { TLexerST }
+ stPInfoType = ^stInfoType;
+ stInfoType  = (STI_RIGHT, STI_ERROR, STI_ERROR_EXPECTED, STI_ERROR_UNTYPE,
+   STI_ERROR_STRING_OUT, STI_ERROR_INCOMPLETE);
+
+(* TControllerBlock *)
+
+ PControllerBlock = ^TControllerBlock;
+ TControllerBlock = class
+  private
+   isError: Boolean;
+   Info: stInfoType;
+   Param1, Param2: String;
+   Function ErrorMessages: Boolean;
+  public
+   Property  Err: Boolean read isError;
+   Function  GetInfo: String;
+   Procedure Reset;
+   Procedure Msg(Message: stInfoType; SomeParam: String); Overload;
+   Procedure Msg(Message: stInfoType); Overload;
+   Procedure Bind(var SomeErr: PBoolean); Overload;
+   Procedure Bind(var SomeInfo: stPInfoType); Overload;
+   Procedure Error;
+ end;
+
+ (* TLexerST *)
 
  PTLexerST = ^TLexerST;
  TLexerST = class
   private
+   Control: PControllerBlock;
    Stage: Integer;
    CurType: stType;
    CurLexeme: STlexeme;
    Pos, PosText1, PosText2: Integer;
    PText: PString;
-   Err, Exelent: Boolean;
+   Exelent, isFinished: Boolean;
    Function GetChar: Char; Inline;
    Procedure DETECT_NONE;
    Procedure DETECT_STRING;
@@ -76,21 +101,24 @@ type
    Property  CL: STlexeme read CurLexeme;
   public
    Constructor Create;
-   Destructor  Destroy;
+   Destructor  Destroy; Override;
    Procedure Clear;
    Procedure Reset;
-   Procedure Bind(var SomeText: String; var Pos1, Pos2: PInteger;
-     var SomeLexeme: stPType);
-   Function  NextTerminal: Boolean;
+   property  Finished: Boolean read isFinished;
+   Procedure Bind(SomeText: PString); Overload;
+   Procedure Bind(var SomeFinished: PBoolean); Overload;
+   Procedure Bind(var Pos1, Pos2: PInteger; var SomeLexeme: stPType); Overload;
+   Procedure BindController(SomeControl: PControllerBlock);
+   Procedure NextTerminal;
  end;
 
- { TParserST }
+ (* TParserST *)
 
  TParserST = class
   private
+   Control: PControllerBlock;
    Lex: PTLexerST;
    CurTerm: STterm;
-   Err: Boolean;
    type stTermStack = specialize TStack<STterm>;
    var  Stack: stTermStack;
    Function GetCurType: stType; inline;
@@ -104,239 +132,123 @@ type
    Property  CurType: stType read GetCurType;
   public
    Constructor Create;
-   Destructor  Destroy;
+   Destructor  Destroy; Override;
    Procedure Clear;
-   Procedure Bind(SomeLexer: PTLexerST);
+   Procedure BindLexer(SomeLexer: PTLexerST);
+   Procedure BindController(SomeControl: PControllerBlock);
    Procedure Reset;
-   Function  CheckType: Boolean;
-   Function  NextTerminal: Boolean;
+   Procedure NextTerminal;
  end;
-
- stInfoType = (STE_RIGHT, STE_ERROR_UNKNOWN);
-
-{ TControllerBlock }
-
- TControllerBlock = class
-  private
-   isError: Boolean;
-   Info: stInfoType;
-   Param1, Param2: String;
-  public
-   Function GetInfo: String;
-   Procedure Msg(Message: stInfoType; SomeParam1, SomeParam2: String); Overload;
-   Procedure Msg(Message: stInfoType; SomeParam: String); Overload;
-   Procedure Msg(Message: stInfoType); Overload;
-   //Procedure Bind
- end;
-
-{$MACRO ON}
 
 var
-  stInfo: stInfoType;
-  Lexer:  TLexerST;
-  Parser: TParserST;
+  Lexer:      TLexerST;
+  Parser:     TParserST;
+  Controller: TControllerBlock;
 
-procedure stBind(var ValStructText: String; var ValPos1, ValPos2: PInteger;
-  var ValType: stPType; var ValError: PBoolean; var SomeType: stPType);
+procedure stBind(var ValPos1, ValPos2: PInteger; var ValType: stPType;
+  var ValFinished, ValError: PBoolean);
 begin
- Lexer.Bind(ValStructText, ValPos1, ValPos2, SomeType);
- //ValType  := @CurType;
- //ValError := @isError;
+ Lexer.Bind(ValPos1, ValPos2, ValType);
+ Lexer.Bind(ValFinished);
+ Controller.Bind(ValError);
+end;
+
+procedure stBind(ValStructText: PString);
+begin
+ Lexer.Bind( ValStructText );
 end;
 
 procedure stReset;
 begin
- //Pos1 := 0;
- //Pos2 := 0;
  Lexer.Reset;
  Parser.Reset;
- //CurType   := ST_NONE;
- //ErrorInfo := STE_NONE;
- //isError   := FALSE;
+ Controller.Reset;
 end;
 
-function stNextTerminal: Boolean;
+procedure stNextTerminalCheck;
 begin
- Result := Parser.NextTerminal;
+ Parser.NextTerminal;
 end;
 
-function stGetErrorInfo: String;
+procedure stNextTerminal;
 begin
- //if not isError then
- //begin
- // Result := 'all right';
- // Exit;
- //end;
- //case ErrorInfo of
- // STE_NONE: Result := 'unknown error';
- //end;
+ Lexer.NextTerminal;
 end;
 
-{ TControllerBlock }
+function stGetInfo: String;
+begin
+ Result := Controller.GetInfo;
+end;
+
+(* TControllerBlock *)
+
+function TControllerBlock.ErrorMessages: Boolean;
+begin
+ case Info of
+  STI_ERROR,
+  STI_ERROR_EXPECTED,
+  STI_ERROR_UNTYPE,
+  STI_ERROR_STRING_OUT,
+  STI_ERROR_INCOMPLETE:
+        Result := TRUE;
+  else  Result := FALSE;
+ end;
+end;
 
 function TControllerBlock.GetInfo: String;
 begin
-
+ case Info of
+  STI_RIGHT:            Result := 'All right';
+  STI_ERROR:            Result := 'Error: Unknown error';
+  STI_ERROR_EXPECTED:   Result := 'Error: Expected ' + Param1;
+  STI_ERROR_UNTYPE:     Result := 'Error: Unknown type';
+  STI_ERROR_STRING_OUT: Result := 'Error: Out of string';
+  STI_ERROR_INCOMPLETE: Result := 'Error: Out of text';
+  else                  Result := 'Error: Unknown information';
+ end;
 end;
 
-procedure TControllerBlock.Msg(Message: stInfoType; SomeParam1,
-  SomeParam2: String);
+procedure TControllerBlock.Reset;
 begin
- Info   := Message;
- Param1 := SomeParam1;
- Param2 := SomeParam2;
+ Info    := STI_RIGHT;
+ isError := FALSE;
+ Param1  := '';
+ Param2  := '';
 end;
 
 procedure TControllerBlock.Msg(Message: stInfoType; SomeParam: String);
 begin
- Info   := Message;
- Param1 := SomeParam;
- Param2 := '';
+ Info    := Message;
+ isError := ErrorMessages;
+ Param1  := SomeParam;
+ Param2  := '';
 end;
 
 procedure TControllerBlock.Msg(Message: stInfoType);
 begin
- Info   := Message;
- Param1 := '';
- Param2 := '';
+ Info    := Message;
+ isError := ErrorMessages;
+ Param1  := '';
+ Param2  := '';
 end;
 
-{ TParserST }
-
-function TParserST.GetCurType: stType;
+procedure TControllerBlock.Bind(var SomeErr: PBoolean);
 begin
- Result := Lex^.CurType;
+ SomeErr := @isError;
 end;
 
-procedure TParserST.Push(ValType: STterm);
+procedure TControllerBlock.Bind(var SomeInfo: stPInfoType);
 begin
- Stack.Push(ValType);
+ SomeInfo := @Info;
 end;
 
-procedure TParserST.Push(const ValTypes: array of STterm);
-var
- i: Integer;
+procedure TControllerBlock.Error;
 begin
- For i := High(ValTypes) downto Low(ValTypes) do
-  Stack.Push(ValTypes[i]);
+ isError := TRUE;
+ Info    := STI_ERROR;
 end;
 
-procedure TParserST.Pop;
-begin
- CurTerm := Stack.Top;
- Stack.Pop;
-end;
-
-procedure TParserST.toSST;
-begin
- case CurType of
-  ST_ID: Push([STN_R, STT_OUT]);
-  else Err := TRUE;
- end;
-end;
-
-procedure TParserST.toR;
-begin
- case CurType of
-  ST_ID: Push([STT_ID, STN_RR, STT_RECORD_END]);
-  else Err := TRUE;
- end;
-end;
-
-procedure TParserST.toRR;
-begin
- case CurType of
-  ST_ID:     Push([STN_V, STN_RR]);
-  ST_CODE:   Push([STN_V, STN_RR]);
-  ST_STRING: Push([STN_V, STN_RR]);
-  ST_RECORD_END: Exit;
-  else Err := TRUE;
- end;
-end;
-
-procedure TParserST.toV;
-begin
- case CurType of
-  ST_ID:     Push(STN_R);
-  ST_CODE:   Push(STT_CODE);
-  ST_STRING: Push(STT_STRING);
-  else Err := TRUE;
- end;
-end;
-
-constructor TParserST.Create;
-begin
- Stack := stTermStack.Create;
-end;
-
-destructor TParserST.Destroy;
-begin
- Clear;
- Stack.Destroy;
- Lex := nil;
-end;
-
-procedure TParserST.Clear;
-begin
- while not Stack.IsEmpty do Stack.Pop;
-end;
-
-procedure TParserST.Bind(SomeLexer: PTLexerST);
-begin
- Lex := SomeLexer;
-end;
-
-procedure TParserST.Reset;
-begin
- Clear;
- Push(STN_SST);
-end;
-
-function TParserST.CheckType: Boolean;
-begin
- Err := False;
- Result := True;
- repeat
-  Pop;
-  case CurTerm of
-   STN_SST: toSST;
-   STN_R:   toR;
-   STN_RR:  toRR;
-   STN_V:   toV;
-   STT_STRING:;
-   STT_CODE:;
-   STT_ID:;
-   STT_RECORD_END:;
-   STT_OUT:;
-  end;
- until True;
- Result := False;
-end;
-
-function TParserST.NextTerminal: Boolean;
-begin
- Err := FALSE;
- Result := Lex^.NextTerminal;
- if not Result then Exit;
- if CurType = ST_COMMENT then Exit;
- repeat
-  Pop;
-  case CurTerm of
-   STN_SST: toSST;
-   STN_R:   toR;
-   STN_RR:  toRR;
-   STN_V:   toV;
-   STT_STRING:     if CurType = ST_STRING     then Exit;
-   STT_CODE:       if CurType = ST_CODE       then Exit;
-   STT_ID:         if CurType = ST_ID         then Exit;
-   STT_RECORD_END: if CurType = ST_RECORD_END then Exit;
-   STT_OUT:        if not (CurType = ST_OUT)  then Err := TRUE;
-  end;
- until Err;
- Result := FALSE;
-end;
-
-{ TLexerST }
+(* TLexerST *)
 
 function TLexerST.GetChar: Char;
 begin
@@ -370,7 +282,7 @@ begin
   end;
   STL_TAB:;
   else
-   Err := TRUE;
+   Control^.Error;
  end;
 end;
 
@@ -380,14 +292,18 @@ begin
  begin
   Exelent  := TRUE;
   PosText2 := Pos - 1;
+  Exit;
  end;
+ if C = #13 then Control^.Msg(STI_ERROR_STRING_OUT);
 end;
 
 procedure TLexerST.DETECT_CODE;
 begin
  case stage of
-  0: if CL in [STL_DIGIT, STL_LET16] then SetPar(1) else Err := TRUE;
-  1: if CL in [STL_DIGIT, STL_LET16] then SetPar(2) else Err := TRUE;
+  0: if CL in [STL_DIGIT, STL_LET16] then SetPar(1) else
+    Control^.Msg(STI_ERROR_EXPECTED, 'hexadecimal number');
+  1: if CL in [STL_DIGIT, STL_LET16] then SetPar(2) else
+    Control^.Msg(STI_ERROR_EXPECTED, 'hexadecimal number');
   2:
   case CL of
    STL_DIGIT, STL_LET16: SetPar(1);
@@ -403,9 +319,9 @@ begin
     PosText2 := Pos - 1;
     Back;
    end;
-   else Err := TRUE;
+   else Control^.Error;
   end;
-  else Err := TRUE;
+  else Control^.Error;
  end;
 end;
 
@@ -423,11 +339,11 @@ begin
    case CL of
     STL_ID_SYMBOLS: SetPar(1);
     STL_LET16, STL_LETTER: SetPar(2);
-    else Err := TRUE;
+    else Control^.Error;
    end;
   end;
-  1: if CL in [STL_LET16, STL_LETTER] then SetPar(2)
-                                      else Err := TRUE;
+  1: if CL in [STL_LET16, STL_LETTER] then SetPar(2) else
+    Control^.Msg(STI_ERROR_EXPECTED, 'letter');
   2:
   case CL of
    STL_LETTER, STL_LET16, STL_DIGIT:;
@@ -435,9 +351,10 @@ begin
     begin
      Exelent := TRUE;
      PosText2 := Pos - 1;
+     Back;
     end;
   end;
-  else Err := TRUE;
+  else Control^.Error;
  end;
 end;
 
@@ -448,7 +365,7 @@ begin
   1: if C = '/' then
   begin
    PosText2 := Pos - 2;
-   Exelent := TRUE;
+   Exelent  := TRUE;
   end else SetPar(1);
  end;
 end;
@@ -478,7 +395,6 @@ begin
  Stage   := 0;
  CurType := ST_NONE;
  CurLexeme := STL_NONE;
- Err       := FALSE;
  Exelent   := FALSE;
 end;
 
@@ -491,7 +407,6 @@ end;
 procedure TLexerST.Back;
 begin
  dec(Pos);
- GetLexeme;
 end;
 
 procedure TLexerST.SetPar(SomeType: stType);
@@ -518,6 +433,8 @@ end;
 destructor TLexerST.Destroy;
 begin
  Clear;
+ Control := nil;
+ inherited Destroy;
 end;
 
 procedure TLexerST.Clear;
@@ -529,50 +446,205 @@ end;
 procedure TLexerST.Reset;
 begin
  Pos := 0;
+ isFinished := FALSE;
  Cycle;
 end;
 
-procedure TLexerST.Bind(var SomeText: String; var Pos1, Pos2: PInteger;
-  var SomeLexeme: stPType);
+procedure TLexerST.Bind(SomeText: PString);
 begin
- PText := @SomeText;
+ PText := SomeText;
+end;
+
+procedure TLexerST.Bind(var SomeFinished: PBoolean);
+begin
+ SomeFinished := @isFinished;
+end;
+
+procedure TLexerST.Bind(var Pos1, Pos2: PInteger; var SomeLexeme: stPType);
+begin
  Pos1  := @PosText1;
  Pos2  := @PosText2;
  SomeLexeme := @CurType;
  Reset;
 end;
 
-function TLexerST.NextTerminal: Boolean;
+procedure TLexerST.BindController(SomeControl: PControllerBlock);
 begin
- Result := FALSE;
- if Err then Exit;
+ Control := SomeControl;
+end;
+
+procedure TLexerST.NextTerminal;
+begin
  Cycle;
  repeat
   Step;
-  if Pos > Length(PText^) then
-  begin
-   Result  := FALSE;
-   CurType := ST_OUT;
-   Exit;
-  end;
   case curType of
    ST_NONE:    DETECT_NONE;
    ST_STRING:  DETECT_STRING;
    ST_CODE:    DETECT_CODE;
    ST_ID:      DETECT_ID;
    ST_COMMENT: DETECT_COMMENT;
-   else Err := TRUE;
+   else Control^.Msg(STI_ERROR_UNTYPE);
   end;
- until Err or Exelent;
- Result := TRUE;
+  if Pos = Length(PText^) then
+  begin
+   isFinished := TRUE;
+   if not (curType in [ST_RECORD_END,ST_NONE]) then
+     Control^.Msg(STI_ERROR_INCOMPLETE);
+   Exit;
+  end;
+ until Control^.Err or Exelent;
+
+end;
+
+(* TParserST *)
+
+function TParserST.GetCurType: stType;
+begin
+ Result := Lex^.CurType;
+end;
+
+procedure TParserST.Push(ValType: STterm);
+begin
+ Stack.Push(ValType);
+end;
+
+procedure TParserST.Push(const ValTypes: array of STterm);
+var
+ i: Integer;
+begin
+ For i := High(ValTypes) downto Low(ValTypes) do
+  Stack.Push(ValTypes[i]);
+end;
+
+procedure TParserST.Pop;
+begin
+ if Stack.IsEmpty then CurTerm := STT_NONE else
+ begin
+  CurTerm := Stack.Top;
+  Stack.Pop;
+ end;
+end;
+
+procedure TParserST.toSST;
+begin
+ case CurType of
+  ST_ID: Push([STN_R, STT_OUT]);
+  else Control^.Msg(STI_ERROR_EXPECTED, 'ID');
+ end;
+end;
+
+procedure TParserST.toR;
+begin
+ case CurType of
+  ST_ID: Push([STT_ID, STN_RR, STT_RECORD_END]);
+  else Control^.Msg(STI_ERROR_EXPECTED, 'ID');
+ end;
+end;
+
+procedure TParserST.toRR;
+begin
+ case CurType of
+  ST_ID:     Push([STN_V, STN_RR]);
+  ST_CODE:   Push([STN_V, STN_RR]);
+  ST_STRING: Push([STN_V, STN_RR]);
+  ST_RECORD_END: Exit;
+  else Control^.Msg(STI_ERROR_EXPECTED, 'ID | CODE | STRING | ;');
+ end;
+end;
+
+procedure TParserST.toV;
+begin
+ case CurType of
+  ST_ID:     Push(STN_R);
+  ST_CODE:   Push(STT_CODE);
+  ST_STRING: Push(STT_STRING);
+  else Control^.Msg(STI_ERROR_EXPECTED, 'ID | CODE | STRING');
+ end;
+end;
+
+constructor TParserST.Create;
+begin
+ Stack := stTermStack.Create;
+end;
+
+destructor TParserST.Destroy;
+begin
+ Clear;
+ Stack.Destroy;
+ Lex := nil;
+ Control := nil;
+ inherited Destroy;
+end;
+
+procedure TParserST.Clear;
+begin
+ while not Stack.IsEmpty do Stack.Pop;
+end;
+
+procedure TParserST.BindLexer(SomeLexer: PTLexerST);
+begin
+ Lex := SomeLexer;
+end;
+
+procedure TParserST.BindController(SomeControl: PControllerBlock);
+begin
+ Control := SomeControl;
+end;
+
+procedure TParserST.Reset;
+begin
+ Clear;
+ Push(STN_SST);
+end;
+
+procedure TParserST.NextTerminal;
+begin
+ Lex^.NextTerminal;
+ if (Control^.Err) or (CurType = ST_COMMENT) then Exit;
+ repeat
+  Pop;
+  case CurTerm of
+   STN_SST: toSST;
+   STN_R:   toR;
+   STN_RR:  toRR;
+   STN_V:   toV;
+   STT_STRING:
+     if CurType = ST_STRING then Break
+                            else Control^.Msg(STI_ERROR_EXPECTED, 'STRING');
+   STT_CODE:
+     if CurType = ST_CODE then Break
+                          else Control^.Msg(STI_ERROR_EXPECTED, 'CODE');
+   STT_ID:
+     if CurType = ST_ID then Break
+                        else Control^.Msg(STI_ERROR_EXPECTED, 'ID');
+   STT_RECORD_END:
+     if CurType = ST_RECORD_END then Break
+                                else Control^.Msg(STI_ERROR_EXPECTED, ';');
+   STT_OUT:
+     if CurType = ST_RECORD_END then Control^.Msg(STI_ERROR_EXPECTED, ';')
+                                else Control^.Error;
+   else Control^.Error;
+  end;
+ until Control^.Err;
+ if Lex^.Finished then
+ begin
+  Pop;
+  if not (CurTerm = STT_OUT) then
+    Control^.Msg(STI_ERROR_EXPECTED, 'syntax completion');
+ end;
 end;
 
 initialization
   Lexer := TLexerST.Create;
   Parser := TParserST.Create;
-  Parser.Bind( @Lexer );
+  Controller := TControllerBlock.Create;
+  Parser.BindLexer( @Lexer );
+  Parser.BindController( @Controller );
+  Lexer.BindController( @Controller );
 
 finalization
+  Controller.Destroy;
   Parser.Destroy;
   Lexer.Destroy;
 
